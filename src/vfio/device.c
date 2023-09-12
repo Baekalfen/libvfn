@@ -37,9 +37,9 @@
 #include "vfn/support/compiler.h"
 #include "vfn/support/log.h"
 #include "vfn/support/mem.h"
-#include "vfn/vfio/container.h"
 #include "vfn/vfio/device.h"
 #include "vfn/vfio/pci.h"
+#include "vfn/vfio/container.h"
 #include "vfn/pci/util.h"
 
 #include "ccan/array_size/array_size.h"

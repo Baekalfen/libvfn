@@ -27,9 +27,9 @@ extern "C" {
 #include <linux/vfio.h>
 #include <linux/pci_regs.h>
 
-#include <vfn/vfio/container.h>
 #include <vfn/vfio/device.h>
 #include <vfn/vfio/pci.h>
+#include <vfn/vfio/container.h>
 
 #ifdef __cplusplus
 }

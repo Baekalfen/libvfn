@@ -39,6 +39,8 @@
 #include "vfn/support/log.h"
 #include "vfn/support/mem.h"
 
+#include "vfn/vfio/device.h"
+#include "vfn/vfio/pci.h"
 #include "vfn/vfio/container.h"
 
 #include "vfn/trace.h"
@@ -383,8 +385,9 @@ int vfio_get_group_fd(struct vfio_container *vfio, const char *path)
 	return group->fd;
 }
 
-int vfio_map_vaddr(struct vfio_container *vfio, void *vaddr, size_t len, uint64_t *iova)
+int vfio_map_vaddr(struct vfio_pci_device* pci, void *vaddr, size_t len, uint64_t *iova)
 {
+	struct vfio_container *vfio = pci->dev.vfio;
 	uint64_t _iova;
 
 	if (iommu_vaddr_to_iova(&vfio->iommu, vaddr, &_iova))
@@ -412,8 +415,9 @@ out:
 	return 0;
 }
 
-int vfio_unmap_vaddr(struct vfio_container *vfio, void *vaddr, size_t *len)
+int vfio_unmap_vaddr(struct vfio_pci_device* pci, void *vaddr, size_t *len)
 {
+	struct vfio_container *vfio = pci->dev.vfio;
 	struct iova_mapping *m;
 
 	m = iommu_find_mapping(&vfio->iommu, vaddr);
@@ -435,8 +439,9 @@ int vfio_unmap_vaddr(struct vfio_container *vfio, void *vaddr, size_t *len)
 	return 0;
 }
 
-int vfio_map_vaddr_ephemeral(struct vfio_container *vfio, void *vaddr, size_t len, uint64_t *iova)
+int vfio_map_vaddr_ephemeral(struct vfio_pci_device* pci, void *vaddr, size_t len, uint64_t *iova)
 {
+	struct vfio_container *vfio = pci->dev.vfio;
 	if (iommu_get_ephemeral_iova(&vfio->iommu, len, iova)) {
 		log_error("failed to allocate ephemeral iova\n");
 
@@ -455,8 +460,9 @@ int vfio_map_vaddr_ephemeral(struct vfio_container *vfio, void *vaddr, size_t le
 	return 0;
 }
 
-int vfio_unmap_ephemeral_iova(struct vfio_container *vfio, size_t len, uint64_t iova)
+int vfio_unmap_ephemeral_iova(struct vfio_pci_device* pci, size_t len, uint64_t iova)
 {
+	struct vfio_container *vfio = pci->dev.vfio;
 	if (vfio_do_unmap_dma(vfio, len, iova))
 		return -1;
 

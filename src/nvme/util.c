@@ -96,7 +96,7 @@ int nvme_oneshot(struct nvme_ctrl *ctrl, struct nvme_sq *sq, void *sqe, void *bu
 		return -1;
 
 	if (buf) {
-		ret = vfio_map_vaddr_ephemeral(ctrl->pci.dev.vfio, buf, len, &iova);
+		ret = vfio_map_vaddr_ephemeral(&ctrl->pci, buf, len, &iova);
 		if (ret)
 			goto release_rq;
 
@@ -129,7 +129,7 @@ int nvme_oneshot(struct nvme_ctrl *ctrl, struct nvme_sq *sq, void *sqe, void *bu
 
 unmap:
 	if (buf) {
-		if (vfio_unmap_ephemeral_iova(ctrl->pci.dev.vfio, len, iova)) {
+		if (vfio_unmap_ephemeral_iova(&ctrl->pci, len, iova)) {
 			log_error("failed to unmap ephemeral iova: %s\n", strerror(errno));
 
 			ret = -1;
