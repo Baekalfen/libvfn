@@ -185,7 +185,7 @@ static int nvme_configure_sq(struct nvme_ctrl *ctrl, int qid, int qsize,
 		goto unmap_pages;
 	}
 
-	sq->rqs = zmallocn(qsize - 1, sizeof(struct nvme_rq));
+	sq->rqs = (struct nvme_rq *)zmallocn(qsize - 1, sizeof(struct nvme_rq));
 	sq->rq_top = &sq->rqs[qsize - 2];
 
 	for (int i = 0; i < qsize - 1; i++) {
@@ -585,8 +585,8 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 	}
 
 	/* +2 because nsqr/ncqr are zero-based values and do not account for the admin queue */
-	ctrl->sq = zmallocn(ctrl->opts.nsqr + 2, sizeof(struct nvme_sq));
-	ctrl->cq = zmallocn(ctrl->opts.ncqr + 2, sizeof(struct nvme_cq));
+	ctrl->sq = (struct nvme_sq *)zmallocn(ctrl->opts.nsqr + 2, sizeof(struct nvme_sq));
+	ctrl->cq = (struct nvme_cq *)zmallocn(ctrl->opts.ncqr + 2, sizeof(struct nvme_cq));
 
 	if (nvme_configure_adminq(ctrl, 0x0)) {
 		log_debug("could not configure admin queue\n");

@@ -100,7 +100,7 @@ int nvme_oneshot(struct nvme_ctrl *ctrl, struct nvme_sq *sq, void *sqe, void *bu
 		if (ret)
 			goto release_rq;
 
-		ret = nvme_rq_map_prp(rq, sqe, iova, len, ctrl->config.mps);
+		ret = nvme_rq_map_prp(rq, (union nvme_cmd *)sqe, iova, len, ctrl->config.mps);
 		if (ret) {
 			savederrno = errno;
 
@@ -108,12 +108,12 @@ int nvme_oneshot(struct nvme_ctrl *ctrl, struct nvme_sq *sq, void *sqe, void *bu
 		}
 	}
 
-	nvme_rq_exec(rq, sqe);
+	nvme_rq_exec(rq, (union nvme_cmd *)sqe);
 
 	while (nvme_rq_spin(rq, &cqe) < 0) {
 		if (errno == EAGAIN) {
 			log_error("SPURIOUS CQE (cq %" PRIu16 " cid %" PRIu16 ")\n",
-				  rq->sq->cq->id, cqe.cid);
+				  (uint16_t)rq->sq->cq->id, cqe.cid);
 
 			continue;
 		}
