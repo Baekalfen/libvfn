@@ -202,6 +202,7 @@ int iommu_unmap_all(struct iommu_ctx *ctx)
 	return 0;
 }
 
+#ifndef __APPLE__
 int iommu_get_iova_ranges(struct iommu_ctx *ctx, struct iommu_iova_range **ranges)
 {
 	*ranges = ctx->iova_ranges;
@@ -212,6 +213,7 @@ int iommu_iova_range_to_string(struct iommu_iova_range *r, char **str)
 {
 	return asprintf(str, "[0x%llx; 0x%llx]", r->start, r->last);
 }
+#endif
 
 #ifdef __cplusplus
 }

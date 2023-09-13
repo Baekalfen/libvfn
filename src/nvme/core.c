@@ -30,11 +30,40 @@
 
 int errno;
 
+#ifdef __APPLE__
+inline void *cqhdbl(void* doorbells, int qid, int dstrd)
+{
+    struct macvfn_pci_map_bar* doorbell_mapping = (struct macvfn_pci_map_bar*) doorbells;
+    struct macvfn_pci_map_bar* new_mapping = (struct macvfn_pci_map_bar*) zmallocn(1, sizeof(struct macvfn_pci_map_bar));
+
+    new_mapping->pci = doorbell_mapping->pci;
+    new_mapping->idx = doorbell_mapping->idx;
+    new_mapping->len = doorbell_mapping->len;
+    new_mapping->offset = doorbell_mapping->offset + (2 * qid + 1) * (4 << dstrd);
+
+    return new_mapping;
+}
+
+inline void *sqtdbl(void* doorbells, int qid, int dstrd)
+{
+    struct macvfn_pci_map_bar* doorbell_mapping = (struct macvfn_pci_map_bar*) doorbells;
+    struct macvfn_pci_map_bar* new_mapping = (struct macvfn_pci_map_bar*) zmallocn(1, sizeof(struct macvfn_pci_map_bar));
+
+    new_mapping->pci = doorbell_mapping->pci;
+    new_mapping->idx = doorbell_mapping->idx;
+    new_mapping->len = doorbell_mapping->len;
+    new_mapping->offset = doorbell_mapping->offset + (2 * qid) * (4 << dstrd);
+
+    return new_mapping;
+}
+#else
 #define cqhdbl(doorbells, qid, dstrd) \
 	(doorbells + (2 * qid + 1) * (4 << dstrd))
 
 #define sqtdbl(doorbells, qid, dstrd) \
 	(doorbells + (2 * qid) * (4 << dstrd))
+#endif
+
 
 enum nvme_ctrl_feature_flags {
 	NVME_CTRL_F_ADMINISTRATIVE = 1 << 0,
@@ -174,8 +203,16 @@ static int nvme_configure_sq(struct nvme_ctrl *ctrl, int qid, int qsize,
 		rq->sq = sq;
 		rq->cid = (uint16_t)i;
 
+		#ifndef __APPLE__
 		rq->page.vaddr = sq->pages.vaddr + ((uint64_t)i << __mps_to_pageshift(ctrl->config.mps));
 		rq->page.iova = sq->pages.iova + ((uint64_t)i << __mps_to_pageshift(ctrl->config.mps));
+		#else
+		kern_return_t ret = IOMemoryDescriptor::CreateSubMemoryDescriptor(kIOMemoryDirectionInOut, i << __mps_to_pageshift(ctrl->config.mps), ctrl->config.mps, (IOMemoryDescriptor *)sq->pages.vaddr, (IOMemoryDescriptor **) &rq->page.vaddr);
+		if (ret != kIOReturnSuccess){
+			log_error("CreateSubMemoryDescriptor failed");
+		}
+		rq->page.iova = sq->pages.iova + (i << __mps_to_pageshift(ctrl->config.mps));
+		#endif
 
 		if (i > 0)
 			rq->rq_next = &sq->rqs[i - 1];
@@ -620,7 +657,13 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 		goto out;
 	}
 
+	#ifndef __APPLE__
 	oacs = le16_to_cpu(*(leint16_t *)(vaddr + NVME_IDENTIFY_CTRL_OACS));
+	#else
+	IOAddressSegment virtualAddressSegment;
+	((IOBufferMemoryDescriptor *)vaddr)->GetAddressRange(&virtualAddressSegment);
+	oacs = le16_to_cpu(*(leint16_t *)(virtualAddressSegment.address + NVME_IDENTIFY_CTRL_OACS));
+	#endif
 
 	if (oacs & NVME_IDENTIFY_CTRL_OACS_DBCONFIG)
 		ret = nvme_init_dbconfig(ctrl);

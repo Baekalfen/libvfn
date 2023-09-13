@@ -17,7 +17,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef __APPLE__
 #include <linux/types.h>
+#endif
 
 #include <vfn/iommu/context.h>
 #include <vfn/iommu/dma.h>
