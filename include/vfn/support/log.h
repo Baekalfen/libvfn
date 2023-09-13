@@ -10,4 +10,8 @@
  * COPYING and LICENSE files for more information.
  */
 
+#ifdef __APPLE__
+#include <vfn/support/platform/macos/log.h>
+#else
 #include <vfn/support/platform/linux/log.h>
+#endif
