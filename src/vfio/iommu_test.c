@@ -24,8 +24,8 @@
 
 #include <linux/vfio.h>
 
-#include "vfn/vfio/device.h"
-#include "vfn/vfio/pci.h"
+#include <vfn/vfio/device.h>
+#include <vfn/vfio/pci.h>
 #include <vfn/vfio/container.h>
 
 #include "ccan/compiler/compiler.h"

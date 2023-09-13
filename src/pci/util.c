@@ -122,8 +122,13 @@ int pci_driver_remove_id(const char *driver, uint16_t vid, uint16_t did)
 	return ret < 0 ? -1 : 0;
 }
 
+#ifndef __APPLE__
 int pci_device_info_get_ull(const char *bdf, const char *prop, unsigned long long *v)
 {
+	#ifdef __APPLE__
+	*v = 0x010800;
+	return 0;
+	#endif
 	char buf[32], *endptr, *path = NULL;
 	ssize_t ret;
 
@@ -148,6 +153,8 @@ out:
 
 	return errno ? -1 : 0;
 }
+#endif
+
 
 char *pci_get_driver(const char *bdf)
 {

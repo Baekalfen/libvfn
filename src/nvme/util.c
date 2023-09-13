@@ -11,8 +11,20 @@
  */
 
 #include <assert.h>
+#ifndef __APPLE__
 #include <byteswap.h>
 #include <errno.h>
+#include <unistd.h>
+
+#include <sys/mman.h>
+#include <sys/uio.h>
+
+#include <linux/vfio.h>
+#else
+// #include <vfn/support/platform/macos/byteswap.h>
+#include <vfn/support/platform/macos/errno.h>
+#endif
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -21,26 +33,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
-#include <sys/mman.h>
-#include <sys/uio.h>
-
-#include <linux/vfio.h>
-
-#include <vfn/vfio.h>
-#include <vfn/support/atomic.h>
-#include <vfn/support/barrier.h>
-#include <vfn/support/compiler.h>
-#include <vfn/support/endian.h>
-#include <vfn/support/log.h>
-#include <vfn/support/mmio.h>
-#include <vfn/trace.h>
-#include <vfn/nvme/types.h>
-#include <vfn/nvme/queue.h>
-#include <vfn/nvme/ctrl.h>
-#include <vfn/nvme/rq.h>
-#include <vfn/nvme/util.h>
+#include <vfn/nvme.h>
+// #include <vfn/vfio.h>
+// #include <vfn/support/atomic.h>
+// #include <vfn/support/barrier.h>
+// #include <vfn/support/compiler.h>
+// #include <vfn/support/endian.h>
+// #include <vfn/support/log.h>
+// #include <vfn/support/mmio.h>
+// #include <vfn/trace.h>
+// #include <vfn/nvme/types.h>
+// #include <vfn/nvme/queue.h>
+// #include <vfn/nvme/ctrl.h>
+// #include <vfn/nvme/rq.h>
+// #include <vfn/nvme/util.h>
 
 #include "types.h"
 
@@ -129,7 +136,14 @@ int nvme_oneshot(struct nvme_ctrl *ctrl, struct nvme_sq *sq, void *sqe, void *bu
 
 unmap:
 	if (buf) {
+		#ifdef __APPLE__
+		// TODO: vfio_unmap_ephemeral_iova doesn't take (void*)buf
+		// On DriverKit vfio_map_vaddr and vfio_map_vaddr_ephemeral are the same,
+		// so we can just call vfio_unmap_vaddr
+		if (vfio_unmap_vaddr(&ctrl->pci, buf, NULL)) {
+		#else
 		if (vfio_unmap_ephemeral_iova(&ctrl->pci, len, iova)) {
+		#endif
 			log_error("failed to unmap ephemeral iova: %s\n", strerror(errno));
 
 			ret = -1;

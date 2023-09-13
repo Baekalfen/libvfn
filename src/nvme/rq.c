@@ -11,8 +11,22 @@
  */
 
 #include <assert.h>
+#ifndef __APPLE__
 #include <byteswap.h>
 #include <errno.h>
+#include <unistd.h>
+
+#include <sys/mman.h>
+#include <sys/uio.h>
+
+#include <linux/vfio.h>
+#else
+// #include <vfn/support/platform/macos/byteswap.h>
+#include <vfn/support/platform/macos/errno.h>
+// #include <DriverKit/IOLib.h>
+// #include <DriverKit/IOBufferMemoryDescriptor.h>
+#endif
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -21,28 +35,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
-#include <sys/mman.h>
-#include <sys/uio.h>
-
-#include <linux/vfio.h>
-
-#include <vfn/support/align.h>
-#include <vfn/support/atomic.h>
-#include <vfn/support/barrier.h>
-#include <vfn/support/compiler.h>
-#include <vfn/support/endian.h>
-#include <vfn/support/log.h>
-#include <vfn/support/mmio.h>
-#include <vfn/support/mem.h>
-#include <vfn/trace.h>
-#include <vfn/vfio.h>
-#include <vfn/nvme/types.h>
-#include <vfn/nvme/queue.h>
-#include <vfn/nvme/ctrl.h>
-#include <vfn/nvme/rq.h>
-#include <vfn/nvme/util.h>
+#include <vfn/nvme.h>
+// #include <vfn/support/align.h>
+// #include <vfn/support/atomic.h>
+// #include <vfn/support/barrier.h>
+// #include <vfn/support/compiler.h>
+// #include <vfn/support/endian.h>
+// #include <vfn/support/log.h>
+// #include <vfn/support/mmio.h>
+// #include <vfn/support/mem.h>
+// #include <vfn/trace.h>
+// #include <vfn/vfio.h>
+// #include <vfn/nvme/types.h>
+// #include <vfn/nvme/queue.h>
+// #include <vfn/nvme/ctrl.h>
+// #include <vfn/nvme/rq.h>
+// #include <vfn/nvme/util.h>
 
 #include "ccan/minmax/minmax.h"
 
@@ -51,7 +60,11 @@ static int __rq_max_prps;
 
 static void __attribute__((constructor)) init_max_prps(void)
 {
+	#ifdef __APPLE__
+	__rq_max_prps = (int)(IOVMPageSize / sizeof(uint64_t) + 1);
+	#else
 	__rq_max_prps = (int)(sysconf(_SC_PAGESIZE) / sizeof(uint64_t) + 1);
+	#endif
 
 	log_debug("max prps is %d\n", __rq_max_prps);
 }
@@ -213,11 +226,13 @@ int nvme_rq_spin(struct nvme_rq *rq, struct nvme_cqe *cqe_copy)
 	}
 
 	if (!nvme_cqe_ok(&cqe)) {
+		#ifndef __APPLE__
 		if (logv(LOG_DEBUG)) {
 			uint16_t status = le16_to_cpu(cqe.sfp) >> 1;
 
 			log_debug("cqe status 0x%" PRIx16 "\n", (uint16_t)(status & 0x7ff));
 		}
+		#endif
 
 		return nvme_set_errno_from_cqe(&cqe);
 	}

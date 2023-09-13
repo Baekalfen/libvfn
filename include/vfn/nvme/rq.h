@@ -13,6 +13,13 @@
 #ifndef LIBVFN_NVME_RQ_H
 #define LIBVFN_NVME_RQ_H
 
+#ifdef __APPLE__
+struct iovec {
+	char   *iov_base;
+	size_t iov_len;
+};
+#endif
+
 /**
  * struct nvme_rq - Request tracker
  * @opaque: Opaque data pointer

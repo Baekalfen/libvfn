@@ -18,24 +18,39 @@ extern "C" {
 #endif
 
 #include <assert.h>
+#ifndef __APPLE__
 #include <byteswap.h>
 #include <errno.h>
+#include <unistd.h>
+
+#include <sys/mman.h>
+
+#include <linux/vfio.h>
+#else
+#include <vfn/support/platform/macos/byteswap.h>
+#include <vfn/support/platform/macos/errno.h>
+#include <DriverKit/IOBufferMemoryDescriptor.h>
+#endif
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
-#include <sys/mman.h>
-
-#include <linux/vfio.h>
-
-#include <vfn/support.h>
+// #include <ccan/likely/likely.h> // FIX: Circular dependency
+#include <vfn/support/compiler.h> // FIX: Circular dependency
+#include <vfn/support/align.h> // FIX: Circular dependency
+#include <vfn/support/atomic.h> // FIX: Circular dependency
+#include <vfn/support/log.h> // FIX: Circular dependency
+#include <vfn/support/mem.h> // FIX: Circular dependency
+#include <vfn/vfio.h> // TODO: Circular dependency
+#include <vfn/support.h> // TODO: Circular dependency
 #include <vfn/trace.h>
+#ifndef __APPLE__
 #include <vfn/trace/events.h>
-#include <vfn/vfio.h>
+#endif
 #include <vfn/nvme/types.h>
 #include <vfn/nvme/queue.h>
 #include <vfn/nvme/ctrl.h>

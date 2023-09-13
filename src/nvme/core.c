@@ -13,50 +13,75 @@
 #define log_fmt(fmt) "nvme/core: " fmt
 
 #include <assert.h>
+#ifndef __APPLE__
 #include <byteswap.h>
+#include <errno.h>
+#include <unistd.h>
+
+#include <sys/mman.h>
+#include <sys/uio.h>
+
+#include <linux/vfio.h>
+#else
+#include <vfn/support/platform/macos/byteswap.h>
+#include <vfn/support/platform/macos/errno.h>
+int errno;
+#define NVME_AQ_QSIZE 32
+#endif
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <errno.h>
-#include <unistd.h>
 #include <string.h>
 
-#include <sys/mman.h>
-#include <sys/uio.h>
-
-#include <linux/vfio.h>
-
-#include <vfn/support/align.h>
-#include <vfn/support/barrier.h>
-#include <vfn/support/compiler.h>
-#include <vfn/support/atomic.h>
-#include <vfn/support/endian.h>
-#include <vfn/support/log.h>
-#include <vfn/support/mem.h>
-#include <vfn/support/mmio.h>
-#include <vfn/trace.h>
-#include <vfn/vfio.h>
+#include <vfn/nvme.h>
 #include <vfn/pci.h>
-#include <vfn/nvme/types.h>
-#include <vfn/nvme/queue.h>
-#include <vfn/nvme/ctrl.h>
-#include <vfn/nvme/rq.h>
-#include <vfn/nvme/util.h>
 
 #include "ccan/compiler/compiler.h"
 #include "ccan/minmax/minmax.h"
+#ifndef __APPLE__
 #include "ccan/time/time.h"
+#endif
 
 #include "types.h"
 
+#ifdef __APPLE__
+inline void *cqhdbl(void* doorbells, int qid, int dstrd)
+{
+    struct macvfn_pci_map_bar* doorbell_mapping = (struct macvfn_pci_map_bar*) doorbells;
+    struct macvfn_pci_map_bar* new_mapping = (struct macvfn_pci_map_bar*) zmallocn(1, sizeof(struct macvfn_pci_map_bar));
+
+    new_mapping->pci = doorbell_mapping->pci;
+    new_mapping->idx = doorbell_mapping->idx;
+    new_mapping->len = doorbell_mapping->len;
+    new_mapping->offset = doorbell_mapping->offset + (2 * qid + 1) * (4 << dstrd);
+
+    return new_mapping;
+}
+
+inline void *sqtdbl(void* doorbells, int qid, int dstrd)
+{
+    struct macvfn_pci_map_bar* doorbell_mapping = (struct macvfn_pci_map_bar*) doorbells;
+    struct macvfn_pci_map_bar* new_mapping = (struct macvfn_pci_map_bar*) zmallocn(1, sizeof(struct macvfn_pci_map_bar));
+
+    new_mapping->pci = doorbell_mapping->pci;
+    new_mapping->idx = doorbell_mapping->idx;
+    new_mapping->len = doorbell_mapping->len;
+    new_mapping->offset = doorbell_mapping->offset + (2 * qid) * (4 << dstrd);
+
+    return new_mapping;
+}
+#else
 #define cqhdbl(doorbells, qid, dstrd) \
 	(doorbells + (2 * qid + 1) * (4 << dstrd))
 
 #define sqtdbl(doorbells, qid, dstrd) \
 	(doorbells + (2 * qid) * (4 << dstrd))
+#endif
+
 
 enum nvme_ctrl_feature_flags {
 	NVME_CTRL_F_ADMINISTRATIVE = 1 << 0,
@@ -194,8 +219,16 @@ static int nvme_configure_sq(struct nvme_ctrl *ctrl, int qid, int qsize,
 		rq->sq = sq;
 		rq->cid = (uint16_t)i;
 
+		#ifndef __APPLE__
 		rq->page.vaddr = sq->pages.vaddr + (i << ctrl->config.mps);
 		rq->page.iova = sq->pages.iova + (i << ctrl->config.mps);
+		#else
+		kern_return_t ret = IOMemoryDescriptor::CreateSubMemoryDescriptor(kIOMemoryDirectionInOut, i << ctrl->config.mps, ctrl->config.mps, (IOMemoryDescriptor *)sq->pages.vaddr, (IOMemoryDescriptor **) &rq->page.vaddr);
+		if (ret != kIOReturnSuccess){
+			log_error("CreateSubMemoryDescriptor failed");
+		}
+		rq->page.iova = sq->pages.iova + (i << ctrl->config.mps);
+		#endif
 
 		if (i > 0)
 			rq->rq_next = &sq->rqs[i - 1];
@@ -410,24 +443,36 @@ static int nvme_wait_rdy(struct nvme_ctrl *ctrl, unsigned short rdy)
 {
 	uint64_t cap;
 	uint32_t csts;
+   	#ifndef __APPLE__
 	unsigned long timeout_ms;
 	struct timeabs deadline;
+  	#endif
+
+   // TODO: clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
+   // #include <time.h>
 
 	cap = le64_to_cpu(mmio_read64(ctrl->regs, NVME_REG_CAP));
-	timeout_ms = 500 * (NVME_FIELD_GET(cap, CAP_TO) + 1);
+   	#ifndef __APPLE__
+   	timeout_ms = 500 * (NVME_FIELD_GET(cap, CAP_TO) + 1);
 	deadline = timeabs_add(time_now(), time_from_msec(timeout_ms));
+   	#endif
+
+   	log_debug("nvme_wait_rdy() - watch out for deadlock!");
 
 	do {
+       #ifndef __APPLE__
 		if (time_after(time_now(), deadline)) {
 			log_debug("timed out\n");
 
 			errno = ETIMEDOUT;
 			return -1;
 		}
+       #endif
 
 		csts = le32_to_cpu(mmio_read32(ctrl->regs, NVME_REG_CSTS));
 	} while (NVME_FIELD_GET(csts, CSTS_RDY) != rdy);
 
+   	log_debug("nvme_wait_rdy() exit!");
 	return 0;
 }
 
@@ -546,8 +591,10 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 	if ((classcode & 0xff) == 0x03)
 		ctrl->flags = NVME_CTRL_F_ADMINISTRATIVE;
 
+	#ifndef __APPLE__
 	if (vfio_pci_open(&ctrl->pci, bdf))
 		return -1;
+	#endif
 
 	ctrl->regs = vfio_pci_map_bar(&ctrl->pci, 0, 0x1000, 0, PROT_READ | PROT_WRITE);
 	if (!ctrl->regs) {
@@ -632,8 +679,13 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 	if (nvme_admin(ctrl, &cmd, vaddr, len, NULL))
 		return -1;
 
-
+	#ifndef __APPLE__
 	oacs = le16_to_cpu(*(leint16_t *)(vaddr + NVME_IDENTIFY_CTRL_OACS));
+	#else
+	IOAddressSegment virtualAddressSegment;
+	((IOBufferMemoryDescriptor *)vaddr)->GetAddressRange(&virtualAddressSegment);
+	oacs = le16_to_cpu(*(leint16_t *)(virtualAddressSegment.address + NVME_IDENTIFY_CTRL_OACS));
+	#endif
 
 	pgunmap(vaddr, len);
 

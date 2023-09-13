@@ -17,19 +17,27 @@
 extern "C" {
 #endif
 
+#ifndef __APPLE__
 #include <byteswap.h>
 #include <errno.h>
+#include <unistd.h>
+#include <pthread.h>
 #include <fcntl.h>
+
+#include <sys/mman.h>
+
+#include <linux/vfio.h>
+#else
+#include <vfn/support/platform/macos/byteswap.h>
+#include <vfn/support/platform/macos/errno.h>
+#endif
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <pthread.h>
-
-#include <sys/mman.h>
 
 #include <vfn/support/align.h>
 #include <vfn/support/atomic.h>
@@ -42,7 +50,10 @@ extern "C" {
 #include <vfn/support/mem.h>
 #include <vfn/support/mmio.h>
 #include <vfn/support/mutex.h>
-#include <vfn/support/timer.h>
+#include <vfn/support/ticks.h>
+#ifndef __APPLE__
+#include <vfn/support/timer.h> // TODO: Fix
+#endif
 
 #ifdef __cplusplus
 }

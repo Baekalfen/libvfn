@@ -73,7 +73,20 @@ int pci_driver_remove_id(const char *driver, uint16_t vid, uint16_t did);
  * Return: On success, returns ``0``. On error, returns ``-1`` and sets
  * ``errno``.
  */
+#ifndef __APPLE__
 int pci_device_info_get_ull(const char *bdf, const char *prop, unsigned long long *v);
+#else
+int pci_device_info_get_ull(const char *bdf, const char *prop, unsigned long long *v){
+	if (!strcmp(prop, "class")){
+        // TODO: Actually read this from device once it makes sense
+		*v = 0x010800;
+	}
+	else{
+		return -1;
+	}
+	return 0;
+}
+#endif
 
 /**
  * pci_get_driver - get the name of the driver that the device is currently

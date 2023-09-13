@@ -17,6 +17,10 @@
 extern "C" {
 #endif
 
+#ifdef __APPLE__
+#include <vfn/driverkit/container.h>
+#include <vfn/driverkit/pci.h>
+#else
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -30,6 +34,7 @@ extern "C" {
 #include <vfn/vfio/device.h>
 #include <vfn/vfio/pci.h>
 #include <vfn/vfio/container.h>
+#endif
 
 #ifdef __cplusplus
 }
