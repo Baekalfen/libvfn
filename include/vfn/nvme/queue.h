@@ -268,7 +268,11 @@ static inline struct nvme_cqe *nvme_cq_get_cqe(struct nvme_cq *cq)
 		trace_emit("cq %d cid %" PRIu16 "\n", cq->id, cqe->cid);
 	}
 
+	#ifdef __aarch64__
+	mb();
+	#else
 	barrier();
+	#endif
 
 	if (unlikely(++cq->head == cq->qsize)) {
 		cq->head = 0;
