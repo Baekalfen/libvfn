@@ -332,6 +332,7 @@ int nvme_create_iocq(struct nvme_ctrl *ctrl, int qid, int qsize, int vector)
 {
 	struct nvme_cq *cq = &ctrl->cq[qid];
 	union nvme_cmd cmd;
+	int ret;
 
 	uint16_t qflags = NVME_Q_PC;
 	uint16_t iv = 0;
@@ -344,6 +345,7 @@ int nvme_create_iocq(struct nvme_ctrl *ctrl, int qid, int qsize, int vector)
 	if (vector != -1) {
 		qflags |= NVME_CQ_IEN;
 		iv = (uint16_t)vector;
+		log_debug("iocq: setting interrupt vector: %d", iv);
 	}
 
 	cmd.create_cq = (struct nvme_cmd_create_cq) {
@@ -355,7 +357,12 @@ int nvme_create_iocq(struct nvme_ctrl *ctrl, int qid, int qsize, int vector)
 		.iv     = cpu_to_le16(iv),
 	};
 
-	return __admin(ctrl, &cmd);
+	struct nvme_cqe cqe;
+	ret = nvme_oneshot(ctrl, ctrl->adminq.sq, &cmd, NULL, 0x0, &cqe);
+	if (ret){
+		log_debug("iocq failed. status field: %x", cqe.sfp >> 1);
+	}
+	return ret;
 }
 
 int nvme_delete_iocq(struct nvme_ctrl *ctrl, int qid)
