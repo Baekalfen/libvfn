@@ -12,36 +12,22 @@
 
 #define log_fmt(fmt) "nvme/core: " fmt
 
-#include <assert.h>
-#include <byteswap.h>
-#include <inttypes.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <unistd.h>
-#include <string.h>
+#include "common.h"
 
-#include <sys/mman.h>
-#include <sys/uio.h>
-
-#include <linux/vfio.h>
-
-#include <vfn/support.h>
-#include <vfn/trace.h>
-#include <vfn/iommu.h>
-#include <vfn/vfio.h>
-#include <vfn/iommu.h>
-#include <vfn/pci.h>
 #include <vfn/nvme.h>
+#include <vfn/pci.h>
+#include <vfn/iommu/dma.h>
 
 #include "ccan/compiler/compiler.h"
 #include "ccan/minmax/minmax.h"
+#ifndef __APPLE__
+#include <sys/uio.h>
 #include "ccan/time/time.h"
+#endif
 
 #include "types.h"
+
+int errno;
 
 #define cqhdbl(doorbells, qid, dstrd) \
 	(doorbells + (2 * qid + 1) * (4 << dstrd))

@@ -12,24 +12,11 @@
 
 #define log_fmt(fmt) "iommu/iommufd: " fmt
 
-#include <errno.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <pthread.h>
+#include "common.h"
+
 #include <limits.h>
 
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-
-#include <linux/types.h>
 #include <linux/iommufd.h>
-#include <linux/vfio.h>
 
 #include "vfn/trace.h"
 #include "vfn/support.h"
