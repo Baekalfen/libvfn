@@ -81,7 +81,7 @@ static inline int __skiplist_random_level(void)
 {
 	int k = 0;
 
-	while (k < SKIPLIST_LEVELS - 1 && (rand() > (RAND_MAX / 2)))
+	while (k < SKIPLIST_LEVELS - 1 && (arc4random() > (RAND_MAX / 2)))
 		k++;
 
 	return k;
