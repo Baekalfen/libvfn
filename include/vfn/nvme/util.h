@@ -90,8 +90,8 @@ int nvme_aer(struct nvme_ctrl *ctrl, void *opaque);
  * Return: On success, returns ``0``. On error, returns ``-1`` and sets
  * ``errno``.
  */
-int nvme_sync(struct nvme_ctrl *ctrl, struct nvme_sq *sq, void *sqe, void *buf, size_t len,
-	      void *cqe);
+int nvme_sync(struct nvme_ctrl *ctrl, struct nvme_sq *sq, union nvme_cmd *sqe, void *buf, size_t len,
+	      struct nvme_cqe *cqe);
 
 /**
  * nvme_admin - Submit an Admin command and wait for completion
@@ -106,6 +106,6 @@ int nvme_sync(struct nvme_ctrl *ctrl, struct nvme_sq *sq, void *sqe, void *buf, 
  * Return: On success, returns ``0``. On error, returnes ``-1`` and sets
  * ``errno``.
  */
-int nvme_admin(struct nvme_ctrl *ctrl, void *sqe, void *buf, size_t len, void *cqe);
+int nvme_admin(struct nvme_ctrl *ctrl, union nvme_cmd *sqe, void *buf, size_t len, struct nvme_cqe *cqe_copy);
 
 #endif /* LIBVFN_NVME_UTIL_H */
