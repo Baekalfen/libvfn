@@ -78,7 +78,13 @@ int nvme_rq_map_prp(struct nvme_ctrl *ctrl, struct nvme_rq *rq, union nvme_cmd *
 		    size_t len)
 {
 	int prpcount;
+	#ifndef __APPLE__
 	leint64_t *prplist = (leint64_t *)rq->page.vaddr;
+	#else
+	IOAddressSegment virtualAddressSegment;
+	((IOBufferMemoryDescriptor *)rq->page.vaddr)->GetAddressRange(&virtualAddressSegment);
+	leint64_t *prplist = (leint64_t *)virtualAddressSegment.address;
+	#endif
 
 	prpcount = __map_first(&cmd->dptr.prp1, prplist, iova, len,
 			       __mps_to_pageshift(ctrl->config.mps));
@@ -102,7 +108,13 @@ int nvme_rq_mapv_prp(struct nvme_ctrl *ctrl, struct nvme_rq *rq, union nvme_cmd 
 		     struct iovec *iov, int niov)
 {
 	int prpcount, _prpcount;
+	#ifndef __APPLE__
 	leint64_t *prplist = (leint64_t *)rq->page.vaddr;
+	#else
+	IOAddressSegment virtualAddressSegment;
+	((IOBufferMemoryDescriptor *)rq->page.vaddr)->GetAddressRange(&virtualAddressSegment);
+	leint64_t *prplist = (leint64_t *)virtualAddressSegment.address;
+	#endif
 	uint64_t iova = (uint64_t)iov->iov_base;
 	size_t len = iov->iov_len;
 	int pageshift = __mps_to_pageshift(ctrl->config.mps);
