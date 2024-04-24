@@ -60,8 +60,9 @@ int nvme_sync(struct nvme_ctrl *ctrl, struct nvme_sq *sq, union nvme_cmd *sqe, v
 	uint64_t iova;
 	int ret = 0;
 
-	if (buf && iommu_map_vaddr(__iommu_ctx(ctrl), buf, len, &iova, IOMMU_MAP_EPHEMERAL)) {
-		log_debug("failed to map vaddr\n");
+	void *opaque = NULL; // Could be null, as we're always mapped?
+	if (buf && _iommu_map_vaddr(__iommu_ctx(ctrl), buf, len, &iova, IOMMU_MAP_EPHEMERAL, opaque)) {
+		log_error("failed to map vaddr\n");
 		return -1;
 	}
 
@@ -76,6 +77,7 @@ int nvme_sync(struct nvme_ctrl *ctrl, struct nvme_sq *sq, union nvme_cmd *sqe, v
 		}
 	}
 
+	log_debug("sqe->cid %d, rq->cid %d", sqe->cid, rq->cid);
 	nvme_rq_exec(rq, sqe);
 
 	while (nvme_rq_spin(rq, &cqe) < 0) {

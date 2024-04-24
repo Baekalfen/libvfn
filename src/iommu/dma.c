@@ -32,37 +32,27 @@ static int iova_cmp(const void *vaddr, const struct skiplist_node *n)
 
 	if (vaddr < m->vaddr)
 		return -1;
-	else if (vaddr >= ((uint8_t*)m->vaddr) + m->len)
+	else if ((uint64_t)vaddr >= ((uint64_t)m->vaddr) + m->len)
 		return 1;
 
 	return 0;
 }
 
-static int iova_map_add(struct iova_map *map, void *vaddr, size_t len, uint64_t iova,
-			unsigned long flags, void* opaque)
+static int iova_map_add(struct iova_map *map, struct iova_mapping *m)
 {
 	__autolock(&map->lock);
 
 	struct skiplist_node *update[SKIPLIST_LEVELS] = {};
-	struct iova_mapping *m;
 
-	if (!len) {
+	if (!m->len) {
 		errno = EINVAL;
 		return -1;
 	}
 
-	if (skiplist_find(&map->list, vaddr, iova_cmp, update)) {
+	if (skiplist_find(&map->list, m->vaddr, iova_cmp, update)) {
 		errno = EEXIST;
 		return -1;
 	}
-
-	m = znew_t(struct iova_mapping, 1);
-
-	m->vaddr = vaddr;
-	m->len = len;
-	m->iova = iova;
-	m->opaque = opaque;
-	m->flags = flags;
 
 	skiplist_link(&map->list, &m->list, update);
 
@@ -115,11 +105,19 @@ bool iommu_translate_vaddr(struct iommu_ctx *ctx, void *vaddr, uint64_t *iova)
 }
 
 int iommu_map_vaddr(struct iommu_ctx *ctx, void *vaddr, size_t len, uint64_t *iova,
-		    unsigned long flags)
+		    unsigned long flags){
+	#ifdef __APPLE__
+	log_fatal("Use ::_iommu_map_vaddr on macOS");
+	#else
+	return iommu_map_vaddr(ctx, vaddr, len, iova, flags);
+	#endif
+}
+
+int _iommu_map_vaddr(struct iommu_ctx *ctx, void *vaddr, size_t len, uint64_t *iova,
+		    unsigned long flags, void *opaque)
 {
 	uint64_t _iova;
-	void *opaque;
-
+	struct iova_mapping *m;
 	if (iommu_translate_vaddr(ctx, vaddr, &_iova))
 		goto out;
 
@@ -130,16 +128,28 @@ int iommu_map_vaddr(struct iommu_ctx *ctx, void *vaddr, size_t len, uint64_t *io
 		return -1;
 	}
 
-	if (ctx->ops.dma_map(ctx, vaddr, len, &_iova, flags, &opaque)) {
-		log_debug("failed to map dma\n");
+	m = znew_t(struct iova_mapping, 1);
+	m->vaddr = vaddr;
+	m->len = len;
+	m->iova = 0; // Physical address
+	m->opaque[0] = NULL; // DMA command
+	m->opaque[1] = opaque; // IOMemoryDescriptor
+	m->flags = flags;
+
+	if (ctx->ops.dma_map(ctx, m)) {
+		log_error("failed to map dma\n");
+		free(m);
 		return -1;
 	}
 
-	if (iova_map_add(&ctx->map, vaddr, len, _iova, flags, opaque)) {
-		log_debug("failed to add mapping\n");
+	if (iova_map_add(&ctx->map, m)) {
+		log_error("failed to add mapping\n");
+		free(m);
 		return -1;
 	}
 
+	log_debug("iommu_map_vaddr: iova %llx", m->iova);
+	_iova = m->iova;
 out:
 	if (iova)
 		*iova = _iova;

@@ -69,4 +69,24 @@ ssize_t pgmapn(void **mem, unsigned int n, size_t sz)
 	return pgmap(mem, n * sz);
 }
 
+ssize_t __pgmap(void **mem, size_t sz, void** opaque)
+{
+	return pgmap(void **mem, size_t sz);
+}
+
+ssize_t __pgmapn(void **mem, unsigned int n, size_t sz, void** opaque)
+{
+	return pgmapn(mem, n * sz);
+}
+
+void __pgunmap(void *mem, size_t len, void* opaque)
+{
+	return pgunmap(mem, len);
+}
+
+void pgunmap(void *mem, size_t len)
+{
+	if (munmap(mem, len))
+		backtrace_abort();
+}
 

@@ -34,29 +34,50 @@ void backtrace_abort(void)
 	abort();
 }
 
-ssize_t pgmap(void **mem, size_t sz)
+ssize_t __pgmap(void **mem, size_t sz, void **opaque)
 {
+	IOAddressSegment virtualAddressSegment;
 	ssize_t len = ALIGN_UP(sz, __VFN_PAGESIZE);
-
-	// IOBufferMemoryDescriptor* dmaBuffer;// = *mem;
+	IOBufferMemoryDescriptor **mem_descriptor = (IOBufferMemoryDescriptor **) opaque;
 
 	IOBufferMemoryDescriptor::Create(
 		kIOMemoryDirectionInOut,
 		len,
 		__VFN_PAGESIZE,
-		(IOBufferMemoryDescriptor **)mem
+		mem_descriptor
 	);
-	(*(IOBufferMemoryDescriptor **)mem)->SetLength(len);
-	IOAddressSegment virtualAddressSegment;
-	(*(IOBufferMemoryDescriptor **)mem)->GetAddressRange(&virtualAddressSegment);
+	(*mem_descriptor)->SetLength(len);
+	(*mem_descriptor)->GetAddressRange(&virtualAddressSegment);
 	bzero((void*) virtualAddressSegment.address, virtualAddressSegment.length);
+	*mem = (void*) virtualAddressSegment.address;
 
 	return len;
 }
 
+ssize_t __pgmapn(void **mem, unsigned int n, size_t sz, void **opaque)
+{
+	return __pgmap(mem, n * sz, opaque);
+}
+
+void __pgunmap(void *mem, size_t len, void* opaque)
+{
+	IOBufferMemoryDescriptor * _mem = (IOBufferMemoryDescriptor *) opaque;
+	OSSafeReleaseNULL(_mem);
+}
+
+ssize_t pgmap(void **mem, size_t sz)
+{
+	log_fatal("Use ::__pgmap on macOS");
+}
+
 ssize_t pgmapn(void **mem, unsigned int n, size_t sz)
 {
-	return pgmap(mem, n * sz);
+	log_fatal("Use ::__pgmapn on macOS");
+}
+
+void pgunmap(void *mem, size_t len)
+{
+	log_fatal("Use ::__pgunmap on macOS");
 }
 
 #ifdef __cplusplus

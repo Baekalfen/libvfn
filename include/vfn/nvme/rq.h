@@ -26,6 +26,10 @@ struct nvme_rq {
 	uint16_t cid;
 
 	struct {
+		// NOTE: Shouldn't be necessary, as it comes from SQ?
+		// #ifdef __APPLE__
+		// IOBufferMemoryDescriptor * _vaddr;
+		// #endif
 		void *vaddr;
 		uint64_t iova;
 	} page;

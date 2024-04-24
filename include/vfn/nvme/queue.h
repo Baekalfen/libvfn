@@ -27,6 +27,9 @@ struct nvme_dbbuf {
  */
 struct nvme_cq {
 	/* private: */
+	#ifdef __APPLE__
+	IOBufferMemoryDescriptor * vaddr_descriptor;
+	#endif
 	void *vaddr;
 	uint64_t iova;
 
@@ -51,10 +54,16 @@ struct nvme_sq {
 	/* private: */
 	struct nvme_cq *cq;
 
+	#ifdef __APPLE__
+	IOBufferMemoryDescriptor * vaddr_descriptor;
+	#endif
 	void *vaddr;
 	uint64_t iova;
 
 	struct {
+		#ifdef __APPLE__
+		IOBufferMemoryDescriptor * vaddr_descriptor;
+		#endif
 		void *vaddr;
 		uint64_t iova;
 	} pages;
@@ -84,14 +93,16 @@ struct nvme_sq {
  */
 static inline void nvme_sq_post(struct nvme_sq *sq, const union nvme_cmd *sqe)
 {
-	#ifdef __APPLE__
-	IOAddressSegment virtualAddressSegment;
-	((IOBufferMemoryDescriptor *)sq->vaddr)->GetAddressRange(&virtualAddressSegment);
-	log_debug("vaddr: %llx, len: %llx, sqe: %llx", virtualAddressSegment.address, virtualAddressSegment.length, (uint64_t) sqe);
-	memcpy((uint8_t*) virtualAddressSegment.address + (sq->tail << NVME_SQES), sqe, 1 << NVME_SQES);
-	#else
-	memcpy(sq->vaddr + (sq->tail << NVME_SQES), sqe, 1 << NVME_SQES);
-	#endif
+	// #ifdef __APPLE__
+	// IOAddressSegment virtualAddressSegment;
+	// ((IOBufferMemoryDescriptor *)sq->vaddr)->GetAddressRange(&virtualAddressSegment);
+	// log_debug("nvme_sq_post: vaddr: %llx, len: %llx, sqe: %llx", virtualAddressSegment.address, virtualAddressSegment.length, (uint64_t) sqe);
+	// memcpy((uint8_t*) virtualAddressSegment.address + (sq->tail << NVME_SQES), sqe, 1 << NVME_SQES);
+	// #else
+	memcpy(((uint8_t*) sq->vaddr) + (sq->tail << NVME_SQES), sqe, 1 << NVME_SQES);
+	// #endif
+
+	log_debug("nvme_sq_post: sqe->cid %d", sqe->cid);
 
 	trace_guard(NVME_SQ_POST) {
 		trace_emit("sqid %d tail %d\n", sq->id, sq->tail);
@@ -149,6 +160,7 @@ static inline void nvme_sq_update_tail(struct nvme_sq *sq)
 	trace_guard(NVME_SQ_UPDATE_TAIL) {
 		trace_emit("sqid %d tail %d\n", sq->id, sq->tail);
 	}
+	log_debug("nvme_sq_update_tail: sqid %d tail %d", sq->id, sq->tail);
 
 	if (nvme_try_dbbuf(sq->tail, &sq->dbbuf)) {
 		/* do not reorder queue entry store with doorbell store */
@@ -181,13 +193,13 @@ static inline void nvme_sq_exec(struct nvme_sq *sq, const union nvme_cmd *sqe)
  */
 static inline struct nvme_cqe *nvme_cq_head(struct nvme_cq *cq)
 {
-	#ifdef __APPLE__
-	IOAddressSegment virtualAddressSegment;
-	((IOBufferMemoryDescriptor *)cq->vaddr)->GetAddressRange(&virtualAddressSegment);
-	return (struct nvme_cqe *)((uint8_t*) virtualAddressSegment.address + (cq->head << NVME_CQES));
-	#else
-	return (struct nvme_cqe *)(cq->vaddr + (cq->head << NVME_CQES));
-	#endif
+	// #ifdef __APPLE__
+	// IOAddressSegment virtualAddressSegment;
+	// ((IOBufferMemoryDescriptor *)cq->vaddr)->GetAddressRange(&virtualAddressSegment);
+	// return (struct nvme_cqe *)((uint8_t*) virtualAddressSegment.address + (cq->head << NVME_CQES));
+	// #else
+	return (struct nvme_cqe *)(((uint8_t*) cq->vaddr) + (cq->head << NVME_CQES));
+	// #endif
 }
 
 /**
@@ -201,6 +213,7 @@ static inline void nvme_cq_update_head(struct nvme_cq *cq)
 	trace_guard(NVME_CQ_UPDATE_HEAD) {
 		trace_emit("cqid %d head %d\n", cq->id, cq->head);
 	}
+	log_debug("nvme_cq_update_head: cqid %d head %d", cq->id, cq->head);
 
 	if (nvme_try_dbbuf(cq->head, &cq->dbbuf))
 		mmio_write32(cq->doorbell, 0, cpu_to_le32(cq->head));

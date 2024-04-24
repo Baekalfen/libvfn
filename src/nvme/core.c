@@ -80,14 +80,14 @@ static int nvme_configure_cq(struct nvme_ctrl *ctrl, int qid, int qsize, int vec
 	dstrd = NVME_FIELD_GET(cap, CAP_DSTRD);
 
 	if (qid && qid > ctrl->config.ncqa + 1) {
-		log_debug("qid %d invalid; max qid is %d\n", qid, ctrl->config.ncqa + 1);
+		log_error("qid %d invalid; max qid is %d\n", qid, ctrl->config.ncqa + 1);
 
 		errno = EINVAL;
 		return -1;
 	}
 
 	if (qsize < 2) {
-		log_debug("qsize must be at least 2\n");
+		log_error("qsize must be at least 2\n");
 		errno = EINVAL;
 		return -1;
 	}
@@ -108,12 +108,12 @@ static int nvme_configure_cq(struct nvme_ctrl *ctrl, int qid, int qsize, int vec
 		cq->dbbuf.eventidx = cqhdbl(ctrl->dbbuf.eventidxs, qid, dstrd);
 	}
 
-	len = pgmapn(&cq->vaddr, qsize, 1 << NVME_CQES);
+	len = __pgmapn(&cq->vaddr, qsize, 1 << NVME_CQES, (void**)&cq->vaddr_descriptor);
 
-	if (iommu_map_vaddr(__iommu_ctx(ctrl), cq->vaddr, len, &cq->iova, 0x0)) {
-		log_debug("failed to map vaddr\n");
+	if (_iommu_map_vaddr(__iommu_ctx(ctrl), cq->vaddr, len, &cq->iova, 0x0, cq->vaddr_descriptor)) {
+		log_error("failed to map vaddr\n");
 
-		pgunmap(cq->vaddr, len);
+		__pgunmap(cq->vaddr, len, cq->vaddr_descriptor);
 		return -1;
 	}
 
@@ -128,14 +128,16 @@ static void nvme_discard_cq(struct nvme_ctrl *ctrl, struct nvme_cq *cq)
 		return;
 
 	if (iommu_unmap_vaddr(__iommu_ctx(ctrl), cq->vaddr, &len))
-		log_debug("failed to unmap vaddr\n");
+		log_error("failed to unmap vaddr\n");
 
-	pgunmap(cq->vaddr, len);
+	__pgunmap(cq->vaddr, len, NULL);
 
 	if (ctrl->dbbuf.doorbells) {
 		__STORE_PTR(uint32_t *, cq->dbbuf.doorbell, 0);
 		__STORE_PTR(uint32_t *, cq->dbbuf.eventidx, 0);
 	}
+
+	// TODO: Mac: free CreateSubMemoryDescriptor
 
 	memset(cq, 0x0, sizeof(*cq));
 }
@@ -184,13 +186,14 @@ static int nvme_configure_sq(struct nvme_ctrl *ctrl, int qid, int qsize,
 	 * Use ctrl->config.mps instead of host page size, as we have the
 	 * opportunity to pack the allocations.
 	 */
-	len = pgmapn(&sq->pages.vaddr, qsize, __mps_to_pagesize(ctrl->config.mps));
+	void* opaque;
+	len = __pgmapn(&sq->pages.vaddr, qsize, __mps_to_pagesize(ctrl->config.mps), &opaque);
 
 	if (len < 0)
 		return -1;
 
-	if (iommu_map_vaddr(__iommu_ctx(ctrl), sq->pages.vaddr, len, &sq->pages.iova, 0x0)) {
-		log_debug("failed to map vaddr\n");
+	if (_iommu_map_vaddr(__iommu_ctx(ctrl), sq->pages.vaddr, len, &sq->pages.iova, 0x0, opaque)) {
+		log_error("failed to map vaddr\n");
 		goto unmap_pages;
 	}
 
@@ -203,41 +206,39 @@ static int nvme_configure_sq(struct nvme_ctrl *ctrl, int qid, int qsize,
 		rq->sq = sq;
 		rq->cid = (uint16_t)i;
 
-		#ifndef __APPLE__
-		rq->page.vaddr = sq->pages.vaddr + ((uint64_t)i << __mps_to_pageshift(ctrl->config.mps));
-		rq->page.iova = sq->pages.iova + ((uint64_t)i << __mps_to_pageshift(ctrl->config.mps));
-		#else
-		kern_return_t ret = IOMemoryDescriptor::CreateSubMemoryDescriptor(kIOMemoryDirectionInOut, i << __mps_to_pageshift(ctrl->config.mps), ctrl->config.mps, (IOMemoryDescriptor *)sq->pages.vaddr, (IOMemoryDescriptor **) &rq->page.vaddr);
-		if (ret != kIOReturnSuccess){
-			log_error("CreateSubMemoryDescriptor failed");
-		}
+		rq->page.vaddr = (void*)((uint64_t)sq->pages.vaddr + ((uint64_t)i << __mps_to_pageshift(ctrl->config.mps)));
 		rq->page.iova = sq->pages.iova + (i << __mps_to_pageshift(ctrl->config.mps));
-		#endif
+		// kern_return_t ret = IOMemoryDescriptor::CreateSubMemoryDescriptor(kIOMemoryDirectionInOut, i << __mps_to_pageshift(ctrl->config.mps), ctrl->config.mps, (IOMemoryDescriptor *)sq->pages.vaddr, (IOMemoryDescriptor **) &rq->page.vaddr);
+		// if (ret != kIOReturnSuccess){
+		// 	log_error("CreateSubMemoryDescriptor failed");
+		// }
+		// rq->page.iova = sq->pages.iova + (i << __mps_to_pageshift(ctrl->config.mps));
 
 		if (i > 0)
 			rq->rq_next = &sq->rqs[i - 1];
 	}
 
-	len = pgmapn(&sq->vaddr, qsize, 1 << NVME_SQES);
+	// void *opaque;
+	len = __pgmapn(&sq->vaddr, qsize, 1 << NVME_SQES, &opaque);
 	if (len < 0)
 		goto free_sq_rqs;
 
-	if (iommu_map_vaddr(__iommu_ctx(ctrl), sq->vaddr, len, &sq->iova, 0x0)) {
-		log_debug("failed to map vaddr\n");
+	if (_iommu_map_vaddr(__iommu_ctx(ctrl), sq->vaddr, len, &sq->iova, 0x0, opaque)) {
+		log_error("failed to map vaddr\n");
 		goto unmap_sq;
 	}
 
 	return 0;
 
 unmap_sq:
-	pgunmap(sq->vaddr, len);
+	__pgunmap(sq->vaddr, len, NULL);
 free_sq_rqs:
 	free(sq->rqs);
 unmap_pages:
 	if (iommu_unmap_vaddr(__iommu_ctx(ctrl), sq->pages.vaddr, (size_t *)&len))
-		log_debug("failed to unmap vaddr\n");
+		log_error("failed to unmap vaddr\n");
 
-	pgunmap(sq->pages.vaddr, len);
+	__pgunmap(sq->pages.vaddr, len, NULL);
 
 	return -1;
 }
@@ -252,19 +253,21 @@ static void nvme_discard_sq(struct nvme_ctrl *ctrl, struct nvme_sq *sq)
 	if (iommu_unmap_vaddr(__iommu_ctx(ctrl), sq->vaddr, &len))
 		log_debug("failed to unmap vaddr\n");
 
-	pgunmap(sq->vaddr, len);
+	__pgunmap(sq->vaddr, len, NULL);
 
 	free(sq->rqs);
 
 	if (iommu_unmap_vaddr(__iommu_ctx(ctrl), sq->pages.vaddr, &len))
 		log_debug("failed to unmap vaddr\n");
 
-	pgunmap(sq->pages.vaddr, len);
+	__pgunmap(sq->pages.vaddr, len, NULL);
 
 	if (ctrl->dbbuf.doorbells) {
 		__STORE_PTR(uint32_t *, sq->dbbuf.doorbell, 0);
 		__STORE_PTR(uint32_t *, sq->dbbuf.eventidx, 0);
 	}
+
+	// TODO: Mac: free CreateSubMemoryDescriptor
 
 	memset(sq, 0x0, sizeof(*sq));
 }
@@ -494,16 +497,17 @@ static int nvme_init_dbconfig(struct nvme_ctrl *ctrl)
 	uint64_t prp1, prp2;
 	union nvme_cmd cmd;
 
-	if (pgmap((void **)&ctrl->dbbuf.doorbells, __VFN_PAGESIZE) < 0)
+	void *opaque;
+	if (__pgmap((void **)&ctrl->dbbuf.doorbells, __VFN_PAGESIZE, &opaque) < 0)
 		return -1;
 
-	if (iommu_map_vaddr(__iommu_ctx(ctrl), ctrl->dbbuf.doorbells, __VFN_PAGESIZE, &prp1, 0x0))
+	if (_iommu_map_vaddr(__iommu_ctx(ctrl), ctrl->dbbuf.doorbells, __VFN_PAGESIZE, &prp1, 0x0, opaque))
 		return -1;
 
-	if (pgmap((void **)&ctrl->dbbuf.eventidxs, __VFN_PAGESIZE) < 0)
+	if (__pgmap((void **)&ctrl->dbbuf.eventidxs, __VFN_PAGESIZE, &opaque) < 0)
 		return -1;
 
-	if (iommu_map_vaddr(__iommu_ctx(ctrl), ctrl->dbbuf.eventidxs, __VFN_PAGESIZE, &prp2, 0x0))
+	if (_iommu_map_vaddr(__iommu_ctx(ctrl), ctrl->dbbuf.eventidxs, __VFN_PAGESIZE, &prp2, 0x0, opaque))
 		return -1;
 
 	cmd = (union nvme_cmd) {
@@ -539,6 +543,8 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 	uint8_t mpsmin, mpsmax;
 	uint16_t oacs;
 	ssize_t len;
+	// IOBufferMemoryDescriptor *vaddr_descriptor;
+	void *opaque;
 	void *vaddr;
 	int ret;
 
@@ -623,7 +629,7 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 
 	cmd = (union nvme_cmd) {
 		.opcode = NVME_ADMIN_SET_FEATURES,
-		.cid = 0x1,
+		// .cid = 0x1,
 	};
 
 	cmd.features.fid = NVME_FEAT_FID_NUM_QUEUES;
@@ -641,13 +647,18 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 	ctrl->config.ncqa = min_t(int, ctrl->opts.ncqr,
 				  NVME_FIELD_GET(le32_to_cpu(cqe.dw0), FEAT_NRQS_NCQR));
 
-	len = pgmap(&vaddr, NVME_IDENTIFY_DATA_SIZE);
+	len = __pgmap(&vaddr, NVME_IDENTIFY_DATA_SIZE, &opaque);
 	if (len < 0)
 		return -1;
 
+	if (_iommu_map_vaddr(__iommu_ctx(ctrl), vaddr, len, NULL, IOMMU_MAP_EPHEMERAL, opaque)) {
+		log_error("failed to map vaddr\n");
+		return -1;
+	}
+
 	cmd.identify = (struct nvme_cmd_identify) {
 		.opcode = NVME_ADMIN_IDENTIFY,
-		.cid = 0x1,
+		// .cid = 0x1,
 		.cns = NVME_IDENTIFY_CNS_CTRL,
 	};
 
@@ -657,19 +668,21 @@ int nvme_init(struct nvme_ctrl *ctrl, const char *bdf, const struct nvme_ctrl_op
 		goto out;
 	}
 
-	#ifndef __APPLE__
-	oacs = le16_to_cpu(*(leint16_t *)(vaddr + NVME_IDENTIFY_CTRL_OACS));
-	#else
-	IOAddressSegment virtualAddressSegment;
-	((IOBufferMemoryDescriptor *)vaddr)->GetAddressRange(&virtualAddressSegment);
-	oacs = le16_to_cpu(*(leint16_t *)(virtualAddressSegment.address + NVME_IDENTIFY_CTRL_OACS));
-	#endif
+	// #ifndef __APPLE__
+	oacs = le16_to_cpu(*(leint16_t *)(((uint8_t*) vaddr) + NVME_IDENTIFY_CTRL_OACS));
+	// #else
+	// IOAddressSegment virtualAddressSegment;
+	// ((IOBufferMemoryDescriptor *)vaddr)->GetAddressRange(&virtualAddressSegment);
+	// oacs = le16_to_cpu(*(leint16_t *)(virtualAddressSegment.address + NVME_IDENTIFY_CTRL_OACS));
+	// #endif
 
 	if (oacs & NVME_IDENTIFY_CTRL_OACS_DBCONFIG)
 		ret = nvme_init_dbconfig(ctrl);
 
 out:
-	pgunmap(vaddr, len);
+	// NOTE: libfvn has a bug that it always unmaps on nvme_sync
+	// log_fatal_if(iommu_unmap_vaddr(__iommu_ctx(ctrl), vaddr, NULL), "iommu_unmap_vaddr\n");
+	__pgunmap(vaddr, len, opaque);
 
 	return ret;
 }

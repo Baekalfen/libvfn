@@ -53,6 +53,8 @@ enum iommu_map_flags {
  */
 int iommu_map_vaddr(struct iommu_ctx *ctx, void *vaddr, size_t len, uint64_t *iova,
 		    unsigned long flags);
+int _iommu_map_vaddr(struct iommu_ctx *ctx, void *vaddr, size_t len, uint64_t *iova,
+		    unsigned long flags, void *opaque);
 
 /**
  * iommu_unmap_vaddr - unmap a virtual memory address in the IOMMU

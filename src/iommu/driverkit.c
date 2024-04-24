@@ -30,67 +30,83 @@ extern "C" {
 
 #include "context.h"
 
-struct driverkit_container {
-	struct iommu_ctx ctx;
-	char *name;
-	int initialized;
-};
+// struct driverkit_container {
+// 	struct iommu_ctx ctx;
+// 	char *name;
+// 	int initialized;
+// };
 
-static struct driverkit_container driverkit_default_container = {
-	.name = "default",
-	.initialized = 0,
-};
+// static struct driverkit_container driverkit_default_container = {
+// 	.name = "default",
+// 	.initialized = 0,
+// };
 
-static int driverkit_dma_map(struct iommu_ctx *ctx, void *vaddr, size_t len,
-				       uint64_t *iova, unsigned long flags, void **opaque)
+static int driverkit_dma_map(struct iommu_ctx *ctx, struct iova_mapping *m)
 {
-	IODMACommand **dmaCommand = (IODMACommand **) opaque;
-	log_debug("driverkit_dma_map (PrepareForDMA) %p %zu", vaddr, len);
-	IODMACommandSpecification dmaSpecification;
+	kern_return_t ret;
+	IODMACommand **dmaCommand = (IODMACommand **) &m->opaque[0];
+	log_debug("driverkit_dma_map (PrepareForDMA) %p %zu, %p, %p", m->vaddr, m->len, m->opaque[0], m->opaque[1]);
+	IODMACommandSpecification dmaSpecification = {
+		.options = kIODMACommandSpecificationNoOptions,
+		.maxAddressBits = 64,
+	};
 	struct driverkit_pci_device *dev = container_of(ctx, struct driverkit_pci_device, ctx);
 
-	bzero(&dmaSpecification, sizeof(dmaSpecification));
+	// OSNumber vaddr_key = OSNumber::withNumber(vaddr);
+	// IOMemoryDescriptor *mem = driverkit_pci_device->allocations->getObject(vaddr_key);
+	// vaddr_key->release();
+	// log_fatal_if(!mem, "Failed to find IOMemoryDescriptor for vaddr %p", vaddr);
 
-	dmaSpecification.options = kIODMACommandSpecificationNoOptions;
-	dmaSpecification.maxAddressBits = 64;
+	ret = IODMACommand::Create(dev->dev, kIODMACommandCreateNoOptions, &dmaSpecification, dmaCommand);
+	if (ret != kIOReturnSuccess){
+		log_error("IODMACommand::Create failed with error code: %x", ret);
+		return -1;
+	}
 
-	IODMACommand::Create(dev->dev, kIODMACommandCreateNoOptions, &dmaSpecification, dmaCommand);
+	if (!m->opaque[1]){
+		log_error("driverkit_dma_map: opaque[1] is NULL");
+		return -1;
+	}
 
 	uint64_t dmaFlags = 0;
 	uint32_t dmaSegmentCount = 1;
 	IOAddressSegment physicalAddressSegment;
-	kern_return_t ret = (*dmaCommand)->PrepareForDMA(
+	ret = (*dmaCommand)->PrepareForDMA(
 		kIODMACommandPrepareForDMANoOptions,
-		(IOBufferMemoryDescriptor *)vaddr,
+		(IOMemoryDescriptor *) m->opaque[1],
 		0,
-		len,
+		m->len,
 		&dmaFlags,
 		&dmaSegmentCount,
 		&physicalAddressSegment
 	);
 	if (ret != kIOReturnSuccess){
-		log_debug("failed to PrepareForDMA %x", ret);
+		log_error("failed to PrepareForDMA %x", ret);
 		return -1;
 	}
 	if (dmaSegmentCount != 1){
 		log_error("dmaSegmentCount not 1! %u", dmaSegmentCount);
 		return -1;
 	}
-	assert (len == physicalAddressSegment.length);
-	*iova = physicalAddressSegment.address;
+	assert (m->len == physicalAddressSegment.length);
+	m->iova = physicalAddressSegment.address;
+
+	log_debug("driverkit_dma_map: iova %llx", m->iova);
 
 	return 0;
 }
 
 static int driverkit_dma_unmap(struct iommu_ctx *ctx, struct iova_mapping *m)
 {
-	uint64_t iova = m->iova;
-	size_t len = m->len;
-	log_debug("driverkit_dma_unmap (CompleteDMA) %llu %zu", iova, len);
-	IODMACommand *dmaCommand = (IODMACommand *) m->opaque;
-	int ret = (int) dmaCommand->CompleteDMA(kIODMACommandCompleteDMANoOptions);
+	log_debug("driverkit_dma_unmap (CompleteDMA) %p %zu", m->vaddr, m->len);
+	IODMACommand *dmaCommand = (IODMACommand *) m->opaque[0];
+	kern_return_t ret = (int) dmaCommand->CompleteDMA(kIODMACommandCompleteDMANoOptions);
+	if (ret != kIOReturnSuccess){
+		return -1;
+	}
 	OSSafeReleaseNULL(dmaCommand);
-	return ret;
+	m->opaque[0] = NULL;
+	return 0;
 }
 
 static int driverkit_dma_unmap_all(struct iommu_ctx *ctx)
@@ -119,20 +135,22 @@ void iommu_ctx_init(struct iommu_ctx *ctx)
 
 struct iommu_ctx *driverkit_get_iommu_context(const char *name)
 {
-	if (strcmp(name, "default")){
-		// Only 'default' supported
-		return NULL;
-	}
-	return driverkit_get_default_iommu_context();
+	return NULL;
+	// if (strcmp(name, "default")){
+	// 	// Only 'default' supported
+	// 	return NULL;
+	// }
+	// return driverkit_get_default_iommu_context();
 }
 
 struct iommu_ctx *driverkit_get_default_iommu_context(void)
 {
-	if (!driverkit_default_container.initialized){
-		iommu_ctx_init(&driverkit_default_container.ctx);
-	}
+	return NULL;
+	// if (!driverkit_default_container.initialized){
+	// 	iommu_ctx_init(&driverkit_default_container.ctx);
+	// }
 
-	return &driverkit_default_container.ctx;
+	// return &driverkit_default_container.ctx;
 }
 
 #ifdef __cplusplus
